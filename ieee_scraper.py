@@ -1,16 +1,21 @@
-#V2.1: New, improved and CAPTCHA free + chart
+#V2.2: New, improved and CAPTCHA free + chart + map
 
 import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 import time
 import matplotlib.pyplot as plt
+import folium
+from geopy.geocoders import Nominatim
 
 # Create a new instance of the Chrome driver
 driver = webdriver.Chrome()
 
 # search term
 search_query = 'semiconductor'
+
+#rows per page: 10, 25, 50
+rows_per_page = 50
 
 # initialize result lists
 title_list = []
@@ -25,16 +30,60 @@ affiliations_list = []
 country_list = []
 abstract_list = []
 
+geolocator = Nominatim(user_agent="my_geocoder")
+
+def get_coordinates(input_string):
+    input_string = input_string.split(',')
+    backup = input_string[-3].strip()
+    city = input_string[-2].strip()
+    country = input_string[-1].strip()
+
+    try:
+        location = geolocator.geocode(f"{city}, {country}")
+        if location:
+            return location.latitude, location.longitude
+    except:
+        pass
+
+    try:
+        location = geolocator.geocode(f"{backup}, {city}")
+        if location:
+            return location.latitude, location.longitude
+    except:
+        pass
+
+    try:
+        location = geolocator.geocode(city)
+        if location:
+            return location.latitude, location.longitude
+    except:
+        pass
+
+    return None
+
+
+def plot_map(input_string):
+    input_list = input_string.split(',')
+    coords = get_coordinates(input_string)
+    if coords:
+        folium.Marker(coords, popup=input_list[:]).add_to(map_obj)
+
+
+# e = 'Advanced Technology Research Laboratories, Matsushita Elecrric Indusrrial Company Limited, Kyoto, Japan'.split(', ')
+# print(e[0] + ' ' + e[1], e[2], e[3])
+
 
 def replace_country_name(input_str):
+
     country_dict = {
-        'US': 'USA',
+        'US': 'United States',
+        'USA': 'United States',
         'CN': 'China',
         'P. R. China': 'China',
-        'MD': 'USA',
-        'FL': 'USA',
-        'OR': 'USA',
-        'ID': 'USA',
+        'MD': 'United States',
+        'FL': 'United States',
+        'OR': 'United States',
+        'ID': 'United States',
         'R.O.C': 'Taiwan',
         'R.O.C.': 'Taiwan',
         'ROC': 'Taiwan',
@@ -53,16 +102,14 @@ def replace_country_name(input_str):
     for abbreviation, full_name in country_dict.items():
         if input_str_upper == abbreviation.upper():
             return full_name
-
-    # If no match is found, return the original string
     return input_str
 
 
 # loop through pages
-for i in range(1, 2):
+for i in range(1, 11):
 
     driver.get(f'https://ieeexplore.ieee.org/search/searchresult.jsp?queryText={search_query}&highlight=true&returnType=SEARCH&matchPubs=true&ranges=2000_2024_Year'
-               f'&returnFacets=ALL&refinements=ContentType:Journals&pageNumber={i}')
+               f'&returnFacets=ALL&refinements=ContentType:Journals&pageNumber={i}&rowsPerPage={rows_per_page}')
     # add &refinements=ContentType:Conferences in to include conference papers
     print(i)
     # Allow time for the results to load
@@ -184,6 +231,13 @@ result_dict = {'Title': title_list, 'Author(s)': author_list, 'Journal': journal
                '# times Cited (Patents)': patent_cite_list, 'URL': link_list, 'Affiliations': affiliations_list,
                'Countries': country_list, 'Abstract': abstract_list}
 
+map_obj = folium.Map(location=[0, 0], zoom_start=2)  # Default starting location and zoom level
+for affiliation_set in affiliations_list:
+    for affiliation in affiliation_set:
+        plot_map(affiliation)
+map_obj.save("institution_map.html")
+
+
 # convert to dataframe
 df = pd.DataFrame(data=result_dict)
 
@@ -213,5 +267,3 @@ plt.yticks(range(len(total_papers_by_country['Countries'])), total_papers_by_cou
 plt.title('Total Number of IEEE Citations by Country')
 plt.subplots_adjust(left=0.3)  # Adjust left margin to make room for country names
 plt.show()
-
-
