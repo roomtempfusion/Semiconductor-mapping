@@ -1,31 +1,27 @@
-import networkx as nx
-import matplotlib.pyplot as plt
 import pandas as pd
 import re
 import textwrap
-import scipy
+import networkx as nx
+import plotly.graph_objects as go
+import json
 
-# Example list of sets
-csv_path = "C:\\Users\\hkdeb\\PycharmProjects\\ie5bot\\ieee_f300_raw.csv"
+#get csv
+csv_path = "C:\\Users\\hkdeb\\PycharmProjects\\ie5bot\\ieee_f500_raw.csv"
 
 df = pd.read_csv(csv_path)
 
-raw_inst_strs = df['Affiliations']
-institutions = []
-for element in raw_inst_strs:
-    matches = re.findall(r"'(.*?)'", element)
 
-    result_list = list(set(matches))
-    institutions.append(result_list)
+#convert json from csv into lists
+raw_inst_strs = df['Affiliations']
+df['Affiliations'] = df['Affiliations'].apply(lambda x: json.loads(x) if isinstance(x, str) else x)
+institutions = df['Affiliations']
+
 
 connections_dict = {}
 instcheck = []
-# Iterate over sets
-for institution_set in institutions:
-    # Convert the set to a list for easier iteration
-    institutions_list = list(institution_set)
-
-    # Iterate over each institution in the set
+# Iterate over lists
+for institutions_list in institutions:
+    # Iterate over each institution in the list
     for institution in institutions_list:
         instcheck.append(institution)
         # Check if the institution is already a key in the dictionary
@@ -33,45 +29,103 @@ for institution_set in institutions:
             # If not, add it with an empty list as the value
             connections_dict[institution] = []
 
-        # Add connections to other institutions in the same set
+        # Add connections to other institutions in the same list
         connections_dict[institution].extend(
             other_inst for other_inst in institutions_list if other_inst != institution)
 
 # Remove duplicates from the connection lists
 connections_dict = {key: list(set(value) - {key}) for key, value in connections_dict.items()}
 new_dict = {}
+#create dict with institutions that have a certain number of connections
+connection_threshold = 3
 num_connections_dict = {}
+max_connections = 0
 for item in connections_dict.items():
-    if len(item[1]) >= 5:
+    if len(item[1]) >= connection_threshold:
         new_dict[item[0]] = item[1]
     num_connections_dict[item[0]] = len(item[1])
+    if len(item[1]) > max_connections:
+        max_connections = len(item[1])
+
+df = pd.DataFrame(list(connections_dict.items()), columns=['Keys', 'Values'])
+df.to_csv('network.csv')
+
 G = nx.DiGraph()
-plt.figure(figsize=(15, 15))
 
 # Add nodes and edges to the graph
 for institution, related_institutions in new_dict.items():
     G.add_node(institution)
     G.add_edges_from([(institution, related_inst) for related_inst in related_institutions])
 
-pos = nx.spring_layout(G, k=1000000)
-labels = {node: '\n'.join(textwrap.wrap(node, width=15)) for node in G.nodes}
-colormap = []
+pos = nx.fruchterman_reingold_layout(G, k=50)
+
+# Create edges trace
+
+edge_trace = go.Scatter(
+    x=[],
+    y=[],
+    line=dict(width=0.5, color='#888'),  # Set the width and color of edges
+    hoverinfo='none',
+    mode='lines')
+
+for edge in G.edges():
+    x0, y0 = pos[edge[0]]
+    x1, y1 = pos[edge[1]]
+    edge_trace['x'] += tuple([x0, x1, None])
+    edge_trace['y'] += tuple([y0, y1, None])
+
+# Create nodes trace
+node_trace = go.Scatter(
+    x=[],
+    y=[],
+    text=[],
+    mode='markers',
+    hoverinfo='text',
+    marker=dict(
+        color=[degree for degree in num_connections_dict.values()],
+        size=10,
+        cmin=0,
+        cmax=max_connections,  # Set the maximum value for the color scale
+        colorbar=dict(
+            thickness=15,
+            title='Node Connections',
+            xanchor='left',
+            titleside='right',
+            tickvals=list(range(max_connections + 1)),
+            ticktext=list(range(max_connections + 1)),
+            tickmode='array',  # Set tick mode to 'array'
+            tickcolor='white',  # Set tick color
+            ticklen=4,  # Set tick length
+            tickformat='.2f',  # Set tick format for continuous scale
+            ticks='outside'  # Set tick placement
+        ),
+        colorscale='YlGnBu'  # Set the desired colorscale
+    )
+)
+
+
+for node, pos_value in pos.items():
+    x, y = pos_value
+    text_label = f"{node}\n| # of Connections: {num_connections_dict[node]}"
+    node_trace['x'] += tuple([x])
+    node_trace['y'] += tuple([y])
+    node_trace['text'] += tuple([text_label])
+
+
+# Update marker size and color based on node degrees
 node_degrees = dict(G.degree())
+node_trace['marker']['size'] = [3 * degree for degree in node_degrees.values()]
+node_trace['marker']['color'] = [degree for degree in node_degrees.values()]
 
-for node, degree in node_degrees.items():
-    colormap.append((1/(1+2*float(degree)), float(degree)*12/255, 0))
-
-
-# Draw nodes, edges, and labels
-nx.draw_networkx_nodes(G, pos, node_color=colormap, node_size=2000)
-nx.draw_networkx_edges(G, pos, edge_color="black", width=2)
-nx.draw_networkx_labels(G, pos, labels=labels,font_size=4, font_color="white", font_weight="bold")
-
-
-plt.axis('off')  # Turn off axis
-plt.xlim([-1.5, 1.5])
-plt.ylim([-1.5, 1.5])
+# Create figure
+fig = go.Figure(data=[edge_trace, node_trace],
+                layout=go.Layout(
+                    showlegend=False,
+                    hovermode='closest',
+                    margin=dict(b=0, l=0, r=0, t=0),
+                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
+                )
 
 # Show the plot
-plt.show()
-
+fig.show()
