@@ -46,8 +46,9 @@ for item in connections_dict.items():
     num_connections_dict[item[0]] = len(item[1])
     if len(item[1]) > max_connections:
         max_connections = len(item[1])
-
+print(max_connections)
 df = pd.DataFrame(list(connections_dict.items()), columns=['Keys', 'Values'])
+df['Values'] = df['Values'].apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
 df.to_csv('network.csv')
 
 G = nx.DiGraph()
