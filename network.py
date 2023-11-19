@@ -1,10 +1,24 @@
 import pandas as pd
-import re
-import textwrap
 import networkx as nx
 import plotly.graph_objects as go
 import json
+from geopy.geocoders import Nominatim
+geolocator = Nominatim(user_agent="my_geocoder")
 
+def get_coordinates(input_string):
+    input_string = input_string.split(',')
+
+    city = input_string[-2].strip()
+    country = input_string[-1].strip()
+    try:
+        location = geolocator.geocode(f"{city}, {country}", timeout=1)
+    except Exception:
+        return [None, None]
+    print(location)
+    if location is None:
+        return [None, None]
+    return [location.latitude, location.longitude]
+get_coordinates('e, wzwz')
 #get csv
 csv_path = "C:\\Users\\hkdeb\\PycharmProjects\\ie5bot\\ieee_f500_raw.csv"
 
@@ -40,15 +54,24 @@ new_dict = {}
 connection_threshold = 3
 num_connections_dict = {}
 max_connections = 0
-for item in connections_dict.items():
-    if len(item[1]) >= connection_threshold:
-        new_dict[item[0]] = item[1]
-    num_connections_dict[item[0]] = len(item[1])
-    if len(item[1]) > max_connections:
-        max_connections = len(item[1])
-print(max_connections)
-df = pd.DataFrame(list(connections_dict.items()), columns=['Keys', 'Values'])
-df['Values'] = df['Values'].apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
+# for item in connections_dict.items():
+#     if len(item[1]) >= connection_threshold:
+#         new_dict[item[0]] = item[1]
+#     num_connections_dict[item[0]] = len(item[1])
+#     if len(item[1]) > max_connections:
+#         max_connections = len(item[1])
+
+
+#print(max_connections)
+df = pd.DataFrame(list(connections_dict.items()), columns=['Nodes', 'Edges'])
+df['Edges'] = df['Edges'].apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
+lat = []
+long = []
+for inst in df['Nodes']:
+    lat.append(get_coordinates(inst)[0])
+    long.append(get_coordinates(inst)[1])
+df['Latitude'] = lat
+df['Longitude'] = long
 df.to_csv('network.csv')
 
 G = nx.DiGraph()
