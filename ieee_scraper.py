@@ -4,9 +4,6 @@ import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 import time
-import matplotlib.pyplot as plt
-import folium
-from geopy.geocoders import Nominatim
 import json
 # Create a new instance of the Chrome driver
 driver = webdriver.Chrome()
@@ -29,57 +26,9 @@ link_list = []
 affiliations_list = []
 country_list = []
 abstract_list = []
-
-geolocator = Nominatim(user_agent="my_geocoder")
-
-def get_coordinates(input_string):
-    input_string = input_string.split(',')
-    try:
-        backup = input_string[-3].strip()
-        city = input_string[-2].strip()
-        country = input_string[-1].strip()
-    except:
-        try:
-            city = input_string[-2].strip()
-            country = input_string[-1].strip()
-        except:
-            None
-
-    try:
-        location = geolocator.geocode(f"{city}, {country}")
-        if location:
-            return location.latitude, location.longitude
-    except:
-        pass
-
-    try:
-        location = geolocator.geocode(f"{backup}, {city}")
-        if location:
-            return location.latitude, location.longitude
-    except:
-        pass
-
-    try:
-        location = geolocator.geocode(city)
-        if location:
-            return location.latitude, location.longitude
-    except:
-        pass
-
-    return None
-
-
-def plot_map(input_string):
-    if input_string is not None:
-        input_list = input_string.split(',')
-        coords = get_coordinates(input_string)
-        if coords:
-            folium.Marker(coords, popup=input_list[:]).add_to(map_obj)
-
-
-# e = 'Advanced Technology Research Laboratories, Matsushita Elecrric Indusrrial Company Limited, Kyoto, Japan'.split(', ')
-# print(e[0] + ' ' + e[1], e[2], e[3])
-
+ieee_keys = []
+inspec_keys = []
+author_keys = []
 
 def replace_country_name(input_str):
 
@@ -114,7 +63,7 @@ def replace_country_name(input_str):
 
 
 # loop through pages
-for i in range(1, 21):
+for i in range(1, 41):
 
     driver.get(f'https://ieeexplore.ieee.org/search/searchresult.jsp?queryText={search_query}&highlight=true&returnType=SEARCH&matchPubs=true&ranges=2000_2024_Year'
                f'&returnFacets=ALL&refinements=ContentType:Journals&pageNumber={i}&rowsPerPage={rows_per_page}')
@@ -228,6 +177,35 @@ for link in link_list:
     affiliations_list.append(list(set(paper_aff_list)))
     abstract_list.append(abstract)
 
+    driver.get(link + 'keywords#keywords')
+    time.sleep(1)
+    keywords = driver.find_elements(By.CLASS_NAME, 'doc-keywords-list-item')
+    ieee = False
+    inspec = False
+    author = False
+    for result in keywords:
+        if 'IEEE Keywords' in result.text:
+            ieee_keys.append(result.text.replace('\n', ' ').strip('IEEE Keywords ')
+                             .split(' , '))
+            ieee = True
+            continue
+        if 'INSPEC: Controlled Indexing' in result.text:
+            inspec_keys.append(result.text.replace('\n', ' ').strip('INSPEC: Controlled Indexing ')
+                               .split(' , '))
+            inspec = True
+            continue
+        if 'Author Keywords' in result.text:
+            author_keys.append(result.text.replace('\n', ' ').strip('Author Keywords ')
+                               .split(' , '))
+            author = True
+            continue
+    if ieee is False:
+        ieee_keys.append([])
+    if inspec is False:
+        inspec_keys.append([])
+    if author is False:
+        author_keys.append([])
+
 # generate country data
 # countries based on primary institutional affiliation
 
@@ -249,28 +227,22 @@ for paper in affiliations_list:
 result_dict = {'Title': title_list, 'Author(s)': author_list, 'Journal': journal_list, 'Year': year_list,
                '# times Cited (Papers)': paper_cite_list,
                '# times Cited (Patents)': patent_cite_list, 'URL': link_list, 'Affiliations': affiliations_list,
-               'Countries': country_list, 'Abstract': abstract_list}
+               'Countries': country_list, 'Abstract': abstract_list, 'IEEE Keywords': ieee_keys,
+               'INSPEC Keywords': inspec_keys, 'Author Keywords': author_keys}
 
 driver.quit()
 # convert to dataframe
-df = pd.DataFrame(data=result_dict)
 df_out = pd.DataFrame(data=result_dict)
 df_out['Author(s)'] = df_out['Author(s)'].apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
 df_out['Affiliations'] = df_out['Affiliations'].apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
-df_out['Countries'] = df_out['Countries'].apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
+df_out['IEEE Keywords'] = df_out['IEEE Keywords'].apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
+df_out['INSPEC Keywords'] = df_out['INSPEC Keywords'].apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
+df_out['Author Keywords'] = df_out['Author Keywords'].apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
 
 print(df_out)
 
 # convert to csv
-df_out.to_csv('ieee.csv', index=False)
-
-
-map_obj = folium.Map(location=[0, 0], zoom_start=2)  # Default starting location and zoom level
-for affiliation_set in affiliations_list:
-    for affiliation in affiliation_set:
-        plot_map(affiliation)
-map_obj.save("institution_map.html")
-
+df_out.to_csv('ieeef1000raw.csv', index=False)
 
 # Generate chart
 # Flatten sets
