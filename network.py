@@ -5,6 +5,7 @@ import json
 from geopy.geocoders import Nominatim
 geolocator = Nominatim(user_agent="my_geocoder")
 
+
 def get_coordinates(input_string):
     input_string = input_string.split(',')
 
@@ -18,6 +19,8 @@ def get_coordinates(input_string):
     if location is None:
         return [None, None]
     return [location.latitude, location.longitude]
+
+
 def get_coordinates_modified(input_string):
     try:
         location = geolocator.geocode(input_string, timeout=1)
