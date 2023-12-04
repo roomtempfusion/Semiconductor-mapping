@@ -249,6 +249,7 @@ df_out['Affiliations'] = df_out['Affiliations'].apply(lambda x: json.dumps(x) if
 df_out['IEEE Keywords'] = df_out['IEEE Keywords'].apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
 df_out['INSPEC Keywords'] = df_out['INSPEC Keywords'].apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
 df_out['Author Keywords'] = df_out['Author Keywords'].apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
+df_out['Countries'] = df_out['Countries'].apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
 
 print(df_out)
 
