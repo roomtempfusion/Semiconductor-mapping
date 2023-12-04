@@ -12,7 +12,7 @@ driver = webdriver.Chrome()
 search_query = 'semiconductor'
 
 #rows per page: 10, 25, 50
-rows_per_page = 25
+rows_per_page = 10
 
 # initialize result lists
 title_list = []
@@ -29,7 +29,7 @@ abstract_list = []
 ieee_keys = []
 inspec_keys = []
 author_keys = []
-
+acknowledgement_list = []
 def replace_country_name(input_str):
 
     country_dict = {
@@ -63,7 +63,7 @@ def replace_country_name(input_str):
 
 
 # loop through pages
-for i in range(1, 41):
+for i in range(1, 2):
 
     driver.get(f'https://ieeexplore.ieee.org/search/searchresult.jsp?queryText={search_query}&highlight=true&returnType=SEARCH&matchPubs=true&ranges=2000_2024_Year'
                f'&returnFacets=ALL&refinements=ContentType:Journals&pageNumber={i}&rowsPerPage={rows_per_page}')
@@ -177,6 +177,16 @@ for link in link_list:
     affiliations_list.append(list(set(paper_aff_list)))
     abstract_list.append(abstract)
 
+    try:
+        specific_h3_element = driver.find_element(By.XPATH,"//h3[text()='ACKNOWLEDGMENT']")
+        # Find the <p> element following the specific <h3> element
+        next_p_element = specific_h3_element.find_element(By.XPATH,"following-sibling::p")
+        # Print the text content of the <p> element
+        acknowledgement_list.append(next_p_element.text)
+    except:
+        acknowledgement_list.append('')
+
+
     driver.get(link + 'keywords#keywords')
     time.sleep(1)
     keywords = driver.find_elements(By.CLASS_NAME, 'doc-keywords-list-item')
@@ -185,17 +195,18 @@ for link in link_list:
     author = False
     for result in keywords:
         if 'IEEE Keywords' in result.text:
-            ieee_keys.append(result.text.replace('\n', ' ').strip('IEEE Keywords ')
+            ieee_keys.append(result.text.replace('\n', ' ').replace('IEEE Keywords ', '')
                              .split(' , '))
             ieee = True
             continue
         if 'INSPEC: Controlled Indexing' in result.text:
-            inspec_keys.append(result.text.replace('\n', ' ').strip('INSPEC: Controlled Indexing ')
+            inspec_keys.append(result.text.replace('\n', ' ')
+                               .replace('INSPEC: Controlled Indexing ', '')
                                .split(' , '))
             inspec = True
             continue
         if 'Author Keywords' in result.text:
-            author_keys.append(result.text.replace('\n', ' ').strip('Author Keywords ')
+            author_keys.append(result.text.replace('\n', ' ').replace('Author Keywords ', '')
                                .split(' , '))
             author = True
             continue
@@ -228,7 +239,7 @@ result_dict = {'Title': title_list, 'Author(s)': author_list, 'Journal': journal
                '# times Cited (Papers)': paper_cite_list,
                '# times Cited (Patents)': patent_cite_list, 'URL': link_list, 'Affiliations': affiliations_list,
                'Countries': country_list, 'Abstract': abstract_list, 'IEEE Keywords': ieee_keys,
-               'INSPEC Keywords': inspec_keys, 'Author Keywords': author_keys}
+               'INSPEC Keywords': inspec_keys, 'Author Keywords': author_keys, 'Acknowledgments': acknowledgement_list}
 
 driver.quit()
 # convert to dataframe
@@ -242,7 +253,7 @@ df_out['Author Keywords'] = df_out['Author Keywords'].apply(lambda x: json.dumps
 print(df_out)
 
 # convert to csv
-df_out.to_csv('ieeef1000raw.csv', index=False)
+df_out.to_csv('ieee_test.csv', index=False)
 
 # Generate chart
 # Flatten sets
