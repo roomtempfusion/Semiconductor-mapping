@@ -1,79 +1,93 @@
 import pandas as pd
-import networkx as nx
-import plotly.graph_objects as go
 import json
 from geopy.geocoders import Nominatim
+from random import randint
 geolocator = Nominatim(user_agent="my_geocoder")
+
+with open('country_mapping.json', 'r') as file:
+    country_dict = json.load(file)
+with open('official_names.json', 'r') as file:
+    official_dict = json.load(file)
+
+def official_name(input_str):
+
+    # Convert input string to uppercase for case-insensitive matching
+    input_str_upper = input_str.upper()
+
+    for abbreviation, full_name in official_dict.items():
+        if input_str_upper == abbreviation.upper():
+            return full_name
+    return input_str
+
+
+def replace_country_name(input_str):
+
+    # Convert input string to uppercase for case-insensitive matching
+    input_str_upper = input_str.upper()
+
+    for abbreviation, full_name in country_dict.items():
+        if input_str_upper == abbreviation.upper():
+            return full_name
+    return input_str
 
 
 def get_coordinates(input_string):
     input_string = input_string.split(',')
-
-    city = input_string[-2].strip()
-    country = input_string[-1].strip()
+    try:
+        city = input_string[-2].strip()
+    except:
+        city = None
+    try:
+        country = official_name(replace_country_name(input_string[-1].strip()))
+    except:
+        country = None
     try:
         location = geolocator.geocode(f"{city}, {country}", timeout=1)
+        print(location)
     except Exception:
-        return [None, None]
-    print(location)
-    if location is None:
-        return [None, None]
-    return [location.latitude, location.longitude]
-
-
-def get_coordinates_modified(input_string):
-    try:
-        location = geolocator.geocode(input_string, timeout=1)
-        if location is not None:
+        try:
+            location = geolocator.geocode(f"{country}", timeout=1)
             print(location)
-        return [location.latitude, location.longitude]
-    except Exception:
-        return get_coordinates(input_string)
-#get csv
-csv_path = "C:\\Users\\hkdeb\\PycharmProjects\\ie5bot\\ieeef1000raw.csv"
+        except Exception:
+            return [None, None, country]
+    if location is not None:
+        return [float(location.latitude), float(location.longitude), country]
+    else:
+        return [None, None, country]
+
+
+def remove_institution(institutions_list, institution_to_remove):
+    modified_list = institutions_list.copy()
+    if institution_to_remove in modified_list:
+        modified_list.remove(institution_to_remove)
+    return modified_list
+
+
+def affiliation_location(x):
+    try:
+        latitude, longitude, country = get_coordinates(x)
+        return latitude, longitude, country
+    except:
+        return None, None, None
+
+
+csv_path = 'data_processed.csv'
 
 df = pd.read_csv(csv_path)
+df['Author Affiliations'] = df['Author Affiliations'].apply(lambda x: json.loads(x) if isinstance(x, str) else x)
+df['Author Affiliations'].fillna(value='', inplace=True)
+df['Affiliated Institutions'] = df['Author Affiliations']
 
+df.drop(columns=['Document Title', 'Authors', 'Publication Title', 'Publication Year', 'Abstract', 'ISSN', 'DOI',
+                 'Funding Information', 'PDF Link', 'Article Citation Count', 'Reference Count',
+                 'Online Date', 'Author Countries', 'Countries'], inplace=True)
 
-#convert json from csv into lists
-df['Affiliations'] = df['Affiliations'].apply(lambda x: json.loads(x) if isinstance(x, str) else x)
-institutions = df['Affiliations']
+df = df.explode('Author Affiliations')
 
+df['Affiliated Institutions'] = df.apply(lambda row: [inst for inst in row['Affiliated Institutions'] if inst != row['Author Affiliations']], axis=1)
 
-connections_dict = {}
-instcheck = []
-# Iterate over lists
-for institutions_list in institutions:
-    # Iterate over each institution in the list
-    for institution in institutions_list:
-        instcheck.append(institution)
-        # Check if the institution is already a key in the dictionary
-        if institution not in connections_dict:
-            # If not, add it with an empty list as the value
-            connections_dict[institution] = []
+df[['Latitude', 'Longitude', 'Country']] = df['Author Affiliations'].apply(lambda x: pd.Series(affiliation_location(x)))
 
-        # Add connections to other institutions in the same list
-        connections_dict[institution].extend(
-            other_inst for other_inst in institutions_list if other_inst != institution)
-
-# Remove duplicates from the connection lists
-connections_dict = {key: list(set(value) - {key}) for key, value in connections_dict.items()}
-
-#print(max_connections)
-df = pd.DataFrame(list(connections_dict.items()), columns=['Source', 'Target'])
-df['Target'] = df['Target'].apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
-lat = []
-long = []
-for inst in df['Source']:
-    coords = get_coordinates_modified(inst)
-    lat.append(coords[0])
-    long.append(coords[1])
-df['Latitude'] = lat
-df['Longitude'] = long
-
-df = df.explode('Target')
-df.to_csv('network_gephi1.csv')
-df.columns = ['id', 'Target', 'Latitude', 'Longitude']
-df.to_csv('network_gephi2_.csv')
+df.to_csv('coordinates.csv', index=False)
 
 
