@@ -12,7 +12,8 @@ df = pd.read_csv(csv_path)
 
 df['Edges'] = df['Edges'].apply(lambda x: json.loads(x) if isinstance(x, str) else x)
 
-df = df.explode('Edges')
-df = df.drop(df.columns[0], axis=1)
-df.to_csv('exploded_network_edges.csv', index=False)
-print(df)
+print(set(df['Country'].values))
+# df = df.explode('Edges')
+# df = df.drop(df.columns[0], axis=1)
+# df.to_csv('exploded_network_edges.csv', index=False)
+# print(df)
