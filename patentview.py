@@ -175,7 +175,7 @@ country_dict = {
     'ZM': 'Republic of Zambia',
     'ZW': 'Republic of Zimbabwe',
 }
-abstract_search_term = '"photonic band gap"'
+abstract_search_term = '"wind turbine"'
 # add with '_and' to narrow down cross-domain keywords: {'_text_any': {'patent_title/abstract': 'semiconductor'}}
 query = {'q': {'_and': [{'_or':
                    [{'_text_any': {'patent_abstract': f'{abstract_search_term}'}},
@@ -186,7 +186,8 @@ query = {'q': {'_and': [{'_or':
                     ]}]},
          'f': ['patent_title', 'ipc_section', 'ipc_class','ipc_subclass', 'inventor_country','inventor_latitude',
                'inventor_longitude',
-               'patent_abstract', 'patent_number'],
+               'patent_abstract', 'patent_number', 'patent_num_claims', 'patent_num_combined_citations',
+               'patent_num_cited_by_us_patents', 'patent_processing_time'],
          'o': {'per_page': 10000}}
 
 response = requests.post(api_url, json=query)
@@ -229,6 +230,10 @@ df['IPC Codes'] = filtered_columns.apply(lambda row: remove_empty_strings(row.to
 # Drop the original columns
 df = df.drop(filtered_columns.columns, axis=1)
 
+# Fill None w 0
+df['patent_processing_time'].fillna(0, inplace=True)
+
+
 # Inventor processing
 df_expanded = df['inventors'].apply(pd.Series)
 
@@ -243,19 +248,22 @@ for i in range(0, len(df.columns.tolist())):
 
 def extract_countries(row):
     countries = []
-    #print(row)
-    for col_data in row:
-        if 'inventor_country' in col_data:
-            country = col_data['inventor_country']
-            if country:  # Check if the country is not empty
-                countries.append(country)
+    try:
+        if row is not None:
+            for col_data in row:
+                if isinstance(col_data, dict) and 'inventor_country' in col_data:
+                    country = col_data['inventor_country']
+                    if country:  # Check if the country is not empty
+                        countries.append(country)
+    except:
+        return None
     return countries
 
 
 def extract_coords(row):
     coords_list = []
     for col_data in row:
-        if 'inventor_latitude' in col_data:
+        if isinstance(col_data, dict) and 'inventor_latitude' in col_data:
             coords = [col_data['inventor_latitude'], col_data['inventor_longitude']]
             if coords:  # Check if the country is not empty
                 coords_list.append(coords)
@@ -273,6 +281,7 @@ def official_name(input_str):
     return input_str
 
 
+df.dropna(axis=0, how='all', inplace=True)
 # Apply the function to each row and create a new column 'inventor_countries'
 df['inventor_countries'] = df.apply(lambda row: list(set(extract_countries(row))), axis=1)
 df['inventor_countries'] = df['inventor_countries'].apply(lambda x: [official_name(country) for country in x])

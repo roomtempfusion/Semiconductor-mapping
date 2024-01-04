@@ -6,7 +6,7 @@ import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-csv_path = "C:\\Users\\hkdeb\\PycharmProjects\\ie5bot\\data_processed.csv"
+csv_path = "data_processed.csv"
 df = pd.read_csv(csv_path)
 df.fillna('', inplace=True)
 
@@ -14,11 +14,15 @@ df['IEEE Terms'] = df['IEEE Terms'].apply(lambda x: json.loads(x) if isinstance(
 df['Author Keywords'] = df['Author Keywords'].apply(lambda x: json.loads(x) if isinstance(x, str) else x)
 
 # keywords = ['integrated circuit packaging', 'IC packaging', 'integrated packaging', "semiconductor device packaging"]
-#keywords = ['Memristor', 'Architecture', 'Thermal processing', 'Power management', 'Parallel processing', 'TPUs',
- #           'Leading-edge node', 'Electronic design automation', 'tensor processing unit']
-keywords = ['gallium', 'Gallium Nitride', 'Gallium Oxide', 'Silicon Carbide', 'GaN', 'Ga2O3', 'SiC', 'power amplifiers',
-            'power amplifier architectures', 'wide band gap semiconductors', 'power electronics',
-            'power semiconductor devices', 'photonic band gap', 'wide band gap', 'power semiconductor']
+# keywords = ['Memristor', 'Architecture', 'Thermal processing', 'Power management', 'Parallel processing', 'TPUs',
+#           'Leading-edge node', 'Electronic design automation', 'tensor processing unit']
+# keywords = ['gallium', 'Gallium Nitride', 'Gallium Oxide', 'Silicon Carbide', 'GaN', 'Ga2O3', 'SiC', 'power amplifiers',
+#             'power amplifier architectures', 'wide band gap semiconductors', 'power electronics',
+#             'power semiconductor devices', 'photonic band gap', 'wide band gap', 'power semiconductor']
+
+# keywords = ["Renewable energy", "Energy storage systems", "Power generation", "Smart grids", "Electrical transmission",
+#             "Grid integration", "Battery technologies", "Photovoltaics", "Wind power"]
+keywords = ['hydropower']
 lower_keys = [key.lower() for key in keywords]
 new_df = pd.DataFrame(columns=df.columns)
 
@@ -43,4 +47,4 @@ df = df[mask]
 
 df['IEEE Terms'] = df['IEEE Terms'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
 df['Author Keywords'] = df['Author Keywords'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
-df.to_csv('keyword_parsed_wbg_t.csv', index=False)
+df.to_csv('keyword_parsed_hydro.csv', index=False)
