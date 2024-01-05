@@ -13,5 +13,10 @@ df['patent_num_combined_citations'] = (df['patent_num_combined_citations'].apply
                                        (lambda x: x / max(df['patent_num_combined_citations'].values)))
 df['patent_num_cited_by_us_patents'] = (df['patent_num_cited_by_us_patents'].apply
                                         (lambda x: x / max(df['patent_num_cited_by_us_patents'].values)))
-df['patent_processing_time'] = (df['patent_processing_time'].apply(lambda x: x / max(df['patent_processing_time'].values)))
+df['patent_processing_time'] = (df['patent_processing_time'].apply(lambda x: 1 - (x / max(df['patent_processing_time'].values))))
+df['patent_value_sum'] = (df['patent_processing_time'] + df['patent_num_combined_citations']
+                      + df['patent_num_cited_by_us_patents'] + df['adjusted_claims'])
+
 df.to_csv('patents_value.csv', index=False)
+
+
