@@ -6,12 +6,14 @@ import warnings
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-csv_path = "data_processed.csv"
+csv_path = "patents_value.csv"
 df = pd.read_csv(csv_path)
 df.fillna('', inplace=True)
 
-df['IEEE Terms'] = df['IEEE Terms'].apply(lambda x: json.loads(x) if isinstance(x, str) else x)
-df['Author Keywords'] = df['Author Keywords'].apply(lambda x: json.loads(x) if isinstance(x, str) else x)
+# df['IEEE Terms'] = df['IEEE Terms'].apply(lambda x: json.loads(x) if isinstance(x, str) else x)
+# df['Author Keywords'] = df['Author Keywords'].apply(lambda x: json.loads(x) if isinstance(x, str) else x)
+# df['Countries'] = df['Countries'].apply(lambda x: json.loads(x) if isinstance(x, str) and x.strip() else x)
+df['inventor_countries'] = df['inventor_countries'].apply(lambda x: json.loads(x) if isinstance(x, str) and x.strip() else x)
 
 # keywords = ['integrated circuit packaging', 'IC packaging', 'integrated packaging', "semiconductor device packaging"]
 # keywords = ['Memristor', 'Architecture', 'Thermal processing', 'Power management', 'Parallel processing', 'TPUs',
@@ -22,7 +24,7 @@ df['Author Keywords'] = df['Author Keywords'].apply(lambda x: json.loads(x) if i
 
 # keywords = ["Renewable energy", "Energy storage systems", "Power generation", "Smart grids", "Electrical transmission",
 #             "Grid integration", "Battery technologies", "Photovoltaics", "Wind power"]
-keywords = ['hydropower']
+keywords = ['United Kingdom']
 lower_keys = [key.lower() for key in keywords]
 new_df = pd.DataFrame(columns=df.columns)
 
@@ -41,10 +43,19 @@ def key_searcher(row):
         return True
     return False
 
+def country_searcher(row):
+    for key in keywords:
+        if key in row['inventor_countries']:
+            return True
+    return False
 
-mask = df.apply(key_searcher, axis=1)
+
+mask = df.apply(country_searcher, axis=1)
 df = df[mask]
 
-df['IEEE Terms'] = df['IEEE Terms'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
-df['Author Keywords'] = df['Author Keywords'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
-df.to_csv('keyword_parsed_hydro.csv', index=False)
+# df['IEEE Terms'] = df['IEEE Terms'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
+# df['Author Keywords'] = df['Author Keywords'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
+# df['Countries'] = df['Countries'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
+df['inventor_countries'] = df['inventor_countries'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
+
+df.to_csv('patents_value_uk.csv', index=False)

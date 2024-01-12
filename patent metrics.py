@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import json
+from scipy.stats.mstats import winsorize
 
 
 df = pd.read_csv('patents_value.csv')

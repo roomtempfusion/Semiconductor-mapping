@@ -177,7 +177,7 @@ country_dict = {
     'NO': 'Kingdom of Norway'
 }
 
-abstract_search_term = 'photovoltaic'
+abstract_search_term = '"wind turbine"'
 #year = 2005
 # add with '_and' to narrow down cross-domain keywords: {'_text_any': {'patent_title/abstract': 'semiconductor'}}
 query = {'q': {'_and': [{'_or':
@@ -193,7 +193,8 @@ query = {'q': {'_and': [{'_or':
          'f': ['patent_title', 'ipc_section', 'ipc_class','ipc_subclass', 'inventor_country','inventor_latitude',
                'inventor_longitude',
                'patent_abstract', 'patent_number', 'patent_num_claims', 'patent_num_combined_citations',
-               'patent_num_cited_by_us_patents', 'patent_processing_time', 'patent_year'],
+               'patent_num_cited_by_us_patents', 'patent_processing_time', 'patent_year', 'forprior_docnumber',
+               'assignee_organization'],
          'o': {'per_page': 10000}}
 
 response = requests.post(api_url, json=query)
@@ -302,6 +303,15 @@ for name in df.columns.tolist():
     if 'Inventor' in name:
         #print(name)
         df.drop(name, axis=1, inplace=True)
+
+# Assignee processing
+df['assignees'] = df['assignees'].apply(lambda x: [d['assignee_organization'] for d in x] if isinstance(x, list) else x)
+df['assignees'] = df['assignees'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
+
+# Foreign Patent Processing
+
+df['foreign_priority'] = (df['foreign_priority'].apply
+    (lambda x: sum(1 for d in x if d['forprior_docnumber'] is not None) if isinstance(x, list) else x))
 abstract_search_term_safe = abstract_search_term.replace(' ', '_').replace('"', '')
 #print(abstract_search_term_safe)
 df.to_csv(f'patents_data_{abstract_search_term_safe}.csv', index=False)
