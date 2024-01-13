@@ -1,4 +1,3 @@
-# PatentView > PATSTAT
 # america wins again
 # see https://patentsview.org/apis/api-endpoints/patents for query information and what data fields are available
 # see https://patentsview.org/apis/api-query-language#field_list_format for comparison operators and formatting
@@ -6,6 +5,11 @@ import requests
 import pandas as pd
 import json
 import sys
+from scipy.stats.mstats import winsorize
+import numpy as np
+import matplotlib.pyplot as plt
+from fuzzywuzzy import process
+
 api_url = 'https://api.patentsview.org/patents/query'
 country_dict = {
     'AF': 'Islamic Republic of Afghanistan',
@@ -177,83 +181,31 @@ country_dict = {
     'NO': 'Kingdom of Norway'
 }
 
-abstract_search_term = '"wind turbine"'
-#year = 2005
-# add with '_and' to narrow down cross-domain keywords: {'_text_any': {'patent_title/abstract': 'semiconductor'}}
-query = {'q': {'_and': [{'_or':
-                   [{'_text_any': {'patent_abstract': f'{abstract_search_term}'}},
-                    {'_text_any': {'patent_title': f'{abstract_search_term}'}}
-                    ]},
-                        {'_or':
-                   [{'_text_any': {'patent_abstract': 'semiconductor'}},
-                    {'_text_any': {'patent_title': 'semiconductor'}}
-                    ]},
-                        #{'patent_year': f'{year}'}
-                        ]},
-         'f': ['patent_title', 'ipc_section', 'ipc_class','ipc_subclass', 'inventor_country','inventor_latitude',
-               'inventor_longitude',
-               'patent_abstract', 'patent_number', 'patent_num_claims', 'patent_num_combined_citations',
-               'patent_num_cited_by_us_patents', 'patent_processing_time', 'patent_year', 'forprior_docnumber',
-               'assignee_organization'],
-         'o': {'per_page': 10000}}
-
-response = requests.post(api_url, json=query)
-df = pd.DataFrame(response.json()['patents'])
-
-# If no results, end program
-if len(df) == 0:
-    print('No results')
-    sys.exit()
-
-# IPC Code processing
-df_expanded = df['IPCs'].apply(pd.Series)
-
-# Add new columns with the original DataFrame and remove IPC columns
-df = pd.concat([df, df_expanded], axis=1).drop('IPCs', axis=1)
-
-# Rename columns
-for i in range(0, len(df.columns.tolist())):
-    if i in df.columns.tolist():
-        df.rename(columns={i: f'IPC_{i+1}'}, inplace=True)
-        df[f'IPC_{i+1}'] = df[f'IPC_{i+1}'].fillna({i: {} for i in df.index})
-
-# Combine IPC code values
-for name in df.columns.tolist():
-    if 'IPC_' in name:
-        df[name] = df[name].apply(
-            lambda x: ''.join(x.values()) if x and all(v is not None for v in x.values()) else '')
+# Define functions
+def extract_coords(row):
+    # Sets default coords if coords not found from API
+    coords_list = []
+    for col_data in row:
+        if isinstance(col_data, dict) and 'inventor_latitude' in col_data:
+            coords = [col_data['inventor_latitude'], col_data['inventor_longitude']]
+            if coords:  # Check if the country is not empty
+                coords_list.append(coords)
+    return coords_list
 
 
-filtered_columns = df.filter(like='IPC_', axis=1)
+def country_name(input_str):
+    # Convert country name to standardized name
+    # Convert input string to uppercase for case-insensitive matching
+    input_str_upper = input_str.upper()
 
-
-def remove_empty_strings(lst):
-    return [value for value in lst if value != '']
-
-
-# Combine values from filtered columns into a new column 'IPC Codes'
-df['IPC Codes'] = filtered_columns.apply(lambda row: remove_empty_strings(row.tolist()), axis=1)
-
-# Drop the original columns
-df = df.drop(filtered_columns.columns, axis=1)
-
-# Fill None w 0
-df['patent_processing_time'].fillna(0, inplace=True)
-
-
-# Inventor processing
-df_expanded = df['inventors'].apply(pd.Series)
-
-# Concatenate the new columns with the original DataFrame
-df = pd.concat([df, df_expanded], axis=1).drop('inventors', axis=1)
-
-for i in range(0, len(df.columns.tolist())):
-    if i in df.columns.tolist():
-        df.rename(columns={i: f'Inventor {i+1}'}, inplace=True)
-        df[f'Inventor {i+1}'] = df[f'Inventor {i+1}'].fillna({i: {} for i in df.index})
+    for abbreviation, full_name in country_dict.items():
+        if input_str_upper == abbreviation.upper():
+            return full_name
+    return input_str
 
 
 def extract_countries(row):
+    # Pull countries out of raw data
     countries = []
     try:
         if row is not None:
@@ -267,52 +219,241 @@ def extract_countries(row):
     return countries
 
 
-def extract_coords(row):
-    coords_list = []
-    for col_data in row:
-        if isinstance(col_data, dict) and 'inventor_latitude' in col_data:
-            coords = [col_data['inventor_latitude'], col_data['inventor_longitude']]
-            if coords:  # Check if the country is not empty
-                coords_list.append(coords)
-    return coords_list
+def remove_empty_strings(lst):
+    return [value for value in lst if value != '']
+
+def csv_combiner(*args):
+    # Takes in a list of csv files and combines them into one dataframe
+    df_list = []
+    for i in range(0, len(args)):
+        locals()[f'df{i}'] = pd.read_csv(args[i])
+        df_list.append(locals()[f'df{i}'])
+    df_combined = pd.concat(df_list, ignore_index=True)
+    df_combined.drop_duplicates(inplace=True)
+    return df_combined
 
 
-def country_name(input_str):
-
-    # Convert input string to uppercase for case-insensitive matching
-    input_str_upper = input_str.upper()
-
-    for abbreviation, full_name in country_dict.items():
-        if input_str_upper == abbreviation.upper():
-            return full_name
-    return input_str
+def combiner(df_list):
+    # Takes in a list of dataframes and combines them into one dataframe file
+    df_combined = pd.concat(df_list, ignore_index=True)
+    df_combined.drop_duplicates(inplace=True)
+    return df_combined
 
 
-df.dropna(axis=0, how='all', inplace=True)
-# Apply the function to each row and create a new column 'inventor_countries'
-df['inventor_countries'] = df.apply(lambda row: list(set(extract_countries(row))), axis=1)
-df['inventor_countries'] = df['inventor_countries'].apply(lambda x: [country_name(country) for country in x])
-df['coords'] = df.apply(lambda row: extract_coords(row), axis=1)
+def get_query(abstract_search_term):
+    # Query the API
+    # add with '_and' to narrow down cross-domain keywords: {'_text_any': {'patent_title/abstract': 'semiconductor'}}
+    query = {'q': {'_and': [{'_or':
+                       [{'_text_any': {'patent_abstract': f'{abstract_search_term}'}},
+                        {'_text_any': {'patent_title': f'{abstract_search_term}'}}
+                        ]},
+                            {'_or':
+                       [{'_text_any': {'patent_abstract': 'semiconductor'}},
+                        {'_text_any': {'patent_title': 'semiconductor'}}
+                        ]},
+                            #{'patent_year': f'{year}'}
+                            ]},
+             'f': ['patent_title', 'ipc_section', 'ipc_class','ipc_subclass', 'inventor_country','inventor_latitude',
+                   'inventor_longitude',
+                   'patent_abstract', 'patent_number', 'patent_num_claims', 'patent_num_combined_citations',
+                   'patent_num_cited_by_us_patents', 'patent_processing_time', 'patent_year', 'forprior_docnumber',
+                   'assignee_organization'],
+             'o': {'per_page': 10000}}
 
-# Preserve list structure
-df['inventor_countries'] = df['inventor_countries'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
-df['coords'] = df['coords'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
-df['IPC Codes'] = df['IPC Codes'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
+    response = requests.post(api_url, json=query)
+    df = pd.DataFrame(response.json()['patents'])
 
-for name in df.columns.tolist():
-    if 'Inventor' in name:
-        #print(name)
-        df.drop(name, axis=1, inplace=True)
 
-# Assignee processing
-df['assignees'] = df['assignees'].apply(lambda x: [d['assignee_organization'] for d in x] if isinstance(x, list) else x)
-df['assignees'] = df['assignees'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
+    # If no results, end program
+    if len(df) == 0:
+        print('No results')
+        sys.exit()
+    return df
 
-# Foreign Patent Processing
 
-df['foreign_priority'] = (df['foreign_priority'].apply
-    (lambda x: sum(1 for d in x if d['forprior_docnumber'] is not None) if isinstance(x, list) else x))
-abstract_search_term_safe = abstract_search_term.replace(' ', '_').replace('"', '')
-#print(abstract_search_term_safe)
-df.to_csv(f'patents_data_{abstract_search_term_safe}.csv', index=False)
-print(df)
+def patent_processor(df):
+    # Processes raw data from API
+
+    # IPC Code processing
+    df_expanded = df['IPCs'].apply(pd.Series)
+
+    df = pd.concat([df, df_expanded], axis=1).drop('IPCs', axis=1)
+
+    # Rename columns
+    for i in range(0, len(df.columns.tolist())):
+        if i in df.columns.tolist():
+            df.rename(columns={i: f'IPC_{i+1}'}, inplace=True)
+            df[f'IPC_{i+1}'] = df[f'IPC_{i+1}'].fillna({i: {} for i in df.index})
+
+    # Combine IPC code values
+    for name in df.columns.tolist():
+        if 'IPC_' in name:
+            df[name] = df[name].apply(
+                lambda x: ''.join(x.values()) if x and all(v is not None for v in x.values()) else '')
+
+
+    filtered_columns = df.filter(like='IPC_', axis=1)
+
+    # Combine values from filtered columns into a new column 'IPC Codes'
+    df['IPC Codes'] = filtered_columns.apply(lambda row: remove_empty_strings(row.tolist()), axis=1)
+
+    # Drop the original columns
+    df = df.drop(filtered_columns.columns, axis=1)
+
+    # Fill None w 0
+    df['patent_processing_time'].fillna(0, inplace=True)
+
+
+    # Inventor processing
+    df_expanded = df['inventors'].apply(pd.Series)
+
+    # Concatenate the new columns with the original DataFrame
+    df = pd.concat([df, df_expanded], axis=1).drop('inventors', axis=1)
+
+    for i in range(0, len(df.columns.tolist())):
+        if i in df.columns.tolist():
+            df.rename(columns={i: f'Inventor {i+1}'}, inplace=True)
+            df[f'Inventor {i+1}'] = df[f'Inventor {i+1}'].fillna({i: {} for i in df.index})
+
+    df.dropna(axis=0, how='all', inplace=True)
+    # Apply the function to each row and create a new column 'inventor_countries'
+    df['inventor_countries'] = df.apply(lambda row: list(set(extract_countries(row))), axis=1)
+    df['inventor_countries'] = df['inventor_countries'].apply(lambda x: [country_name(country) for country in x])
+    df['coords'] = df.apply(lambda row: extract_coords(row), axis=1)
+
+    # Preserve list structure
+    df['inventor_countries'] = df['inventor_countries'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
+    df['coords'] = df['coords'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
+    df['IPC Codes'] = df['IPC Codes'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
+
+    for name in df.columns.tolist():
+        if 'Inventor' in name:
+            #print(name)
+            df.drop(name, axis=1, inplace=True)
+
+    # Assignee processing
+    df['assignees'] = df['assignees'].apply(lambda x: [d['assignee_organization'] for d in x] if isinstance(x, list) else x)
+    df['assignees'] = df['assignees'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
+
+    # Foreign Patent Processing
+
+    df['foreign_priority'] = (df['foreign_priority'].apply
+        (lambda x: sum(1 for d in x if d['forprior_docnumber'] is not None) if isinstance(x, list) else x))
+    return df
+
+
+def country_searcher(row, countries):
+    for key in countries:
+        if key in row['inventor_countries']:
+            return True
+    return False
+
+
+def country_parser(df_to_search, countries):
+    mask = df_to_search.apply(country_searcher, axis=1)
+    df = df_to_search[mask]
+    return df
+
+
+def metric_winsorize(df_input):
+    # Winsorize to account for outliers
+    df_input['patent_num_claims'] = winsorize(df_input['patent_num_claims'], limits=[0.01, 0.01])
+    df_input['patent_num_combined_citations'] = (
+        winsorize(df_input['patent_num_combined_citations'], limits=[0.01, 0.01]))
+    df_input['patent_num_cited_by_us_patents'] = (
+        winsorize(df_input['patent_num_cited_by_us_patents'], limits=[0.01, 0.01]))
+    df_input['patent_processing_time'] = winsorize(df_input['patent_processing_time'], limits=[0.01, 0.01])
+    df_input['foreign_priority'] = winsorize(df_input['foreign_priority'], limits=[0.01, 0.01])
+    return df_input
+
+
+def metric_calculator(df):
+    df['adjusted_claims'] = df['patent_num_claims'] / df['patent_num_combined_citations']
+    df['adjusted_claims'].replace(np.inf, -1, inplace=True)
+    df['adjusted_claims'] = df['adjusted_claims'].apply(lambda x: x / max(df['adjusted_claims'].values))
+    df['adjusted_claims'] = df['adjusted_claims'].apply(lambda x: 1 if x < 0 else x)
+    df['patent_num_claims'] = df['patent_num_claims'].apply(lambda x: x / max(df['patent_num_claims'].values))
+    df['patent_num_combined_citations'] = (df['patent_num_combined_citations'].apply
+                                           (lambda x: x / max(df['patent_num_combined_citations'].values)))
+    df['patent_num_cited_by_us_patents'] = (df['patent_num_cited_by_us_patents'].apply
+                                            (lambda x: x / max(df['patent_num_cited_by_us_patents'].values)))
+    df['patent_processing_time'] = (
+        df['patent_processing_time'].apply(lambda x: 1 - (x / max(df['patent_processing_time'].values))))
+    df['foreign_priority'] = df['foreign_priority'].apply(lambda x: x / max(df['foreign_priority'].values))
+
+    df['patent_value_sum'] = (df['patent_processing_time'] + df['patent_num_combined_citations']
+                              + df['patent_num_cited_by_us_patents'] + df['adjusted_claims'] + df['foreign_priority'])
+    return df
+
+
+def value_dist(df_sums, column):
+    # patent_num_claims	patent_num_combined_citations	patent_value_sum
+    # patent_num_cited_by_us_patents	patent_processing_time	foreign_priority
+    plt.hist(df_sums[column], bins=500, edgecolor='black')  # Adjust the number of bins as needed
+
+    # Add labels and title
+    plt.xlabel('Sum Values')
+    plt.ylabel('Frequency')
+    plt.title('Distribution of Sum Values')
+
+    # Show the plot
+    plt.show()
+
+
+def similarity_ratio(query, choice):
+    return process.extractOne(query, [choice])[1]
+
+
+def duplicate_purger(df):
+    indices_dropped = []
+    for i, ivalue in df['patent_abstract'].items():
+        print(i)
+        if i in indices_dropped:
+            continue
+        for j, jvalue in df['patent_abstract'].items():
+            ratio = similarity_ratio(ivalue, jvalue)
+            if ratio > 90 and (i != j):
+                df.drop(index=j, inplace=True)
+                indices_dropped.append(j)
+    return df
+
+
+def single_query(keyword):
+    # Retrieve a single query from the API
+    # keyword = Term to search from API
+    df_raw = get_query(keyword)
+    df = patent_processor(df_raw)
+    df_processed = metric_calculator(metric_winsorize(df))
+    df_clean = duplicate_purger(df_processed)
+    keyword_safe = keyword.replace(' ', '_').replace('"', '')
+    df_clean.to_csv(f'patents_data_{keyword_safe}.csv', index=False)
+    return df_clean
+
+
+def multiple_query(*args):
+    # Retrieve multiple queries from the API
+    # args = Terms to search from API
+    df_list = list()
+    for keyword in list(args):
+        df_raw = get_query(keyword)
+        df = patent_processor(df_raw)
+        df_processed = metric_calculator(metric_winsorize(df))
+        df_list.append(df_processed)
+    df_comb = combiner(df_list)
+    df_clean = duplicate_purger(df_comb)
+    df_clean.to_csv('patents_data_multiple.csv', index=False)
+    return df_comb
+
+# To combine multiple already processed csv files - enter the file names as strings in the list below
+# df_multiple = csv_combiner()
+
+
+# To show plot of distribution of any metric (one of below)
+# patent_num_claims	patent_num_combined_citations	patent_value_sum
+# patent_num_cited_by_us_patents	patent_processing_time	foreign_priority
+# value_dist(df_metrics, 'patent_value_sum')
+
+
+# To search for patents from certain countries
+# df_countries = country_parser(df_metrics, ['United Kingdom', 'United States'])
+
