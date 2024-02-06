@@ -181,19 +181,38 @@ country_dict = {
     'NO': 'Kingdom of Norway'
 }
 
+file_path = 'official_names.json'
+with open(file_path, 'r', encoding='cp1252') as file:
+    # Load the JSON data into a dictionary
+    official_names = json.load(file)
+file_path2 = 'country_mapping.json'
+with open(file_path2, 'r', encoding='cp1252') as file:
+    # Load the JSON data into a dictionary
+    country_mapping = json.load(file)
+
+
 # Define functions
-def extract_coords(row):
-    # Sets default coords if coords not found from API
-    coords_list = []
-    for col_data in row:
-        if isinstance(col_data, dict) and 'inventor_latitude' in col_data:
-            coords = [col_data['inventor_latitude'], col_data['inventor_longitude']]
-            if coords:  # Check if the country is not empty
-                coords_list.append(coords)
-    return coords_list
 
 
-def country_name(input_str):
+def country_converter(input_str):
+    input_str_upper = input_str.upper()
+
+    for abbreviation, full_name in country_mapping.items():
+        if input_str_upper == abbreviation.upper():
+            return full_name
+    return input_str
+
+
+def official_name_converter(input_str):
+    input_str_upper = input_str.upper()
+
+    for abbreviation, full_name in official_names.items():
+        if input_str_upper == abbreviation.upper():
+            return full_name
+    return input_str
+
+
+def de_abbrev(input_str):
     # Convert country name to standardized name
     # Convert input string to uppercase for case-insensitive matching
     input_str_upper = input_str.upper()
@@ -202,6 +221,17 @@ def country_name(input_str):
         if input_str_upper == abbreviation.upper():
             return full_name
     return input_str
+
+
+def abbreviator(input_str):
+    # Convert country name to standardized name
+    # Convert input string to uppercase for case-insensitive matching
+    input_str_upper = input_str.upper()
+
+    for abbreviation, full_name in country_dict.items():
+        if input_str_upper == full_name.upper():
+            return abbreviation
+    return None
 
 
 def extract_countries(row):
@@ -240,34 +270,30 @@ def combiner(df_list):
     return df_combined
 
 
-def get_query(abstract_search_term):
+def get_query(country):
     # Query the API
     # add with '_and' to narrow down cross-domain keywords: {'_text_any': {'patent_title/abstract': 'semiconductor'}}
-    query = {'q': {'_and': [{'_or':
-                       [{'_text_any': {'patent_abstract': f'{abstract_search_term}'}},
-                        {'_text_any': {'patent_title': f'{abstract_search_term}'}}
-                        ]},
-                            {'_or':
+    query = {'q': {'_and': [
+        # {'_or':
+        #                [{'_text_any': {'patent_abstract': f'{abstract_search_term}'}},
+        #                 {'_text_any': {'patent_title': f'{abstract_search_term}'}}
+        #                 ]},
+                           {'_or':
                        [{'_text_any': {'patent_abstract': 'semiconductor'}},
                         {'_text_any': {'patent_title': 'semiconductor'}}
-                        ]},
-                            #{'patent_year': f'{year}'}
+                        ]
+                             },
+                            {'assignee_country':f'{country}'}
                             ]},
              'f': ['patent_title', 'ipc_section', 'ipc_class','ipc_subclass', 'inventor_country','inventor_latitude',
                    'inventor_longitude',
                    'patent_abstract', 'patent_number', 'patent_num_claims', 'patent_num_combined_citations',
                    'patent_num_cited_by_us_patents', 'patent_processing_time', 'patent_year', 'forprior_docnumber',
-                   'assignee_organization'],
+                   'assignee_organization', 'app_type'],
              'o': {'per_page': 10000}}
 
     response = requests.post(api_url, json=query)
     df = pd.DataFrame(response.json()['patents'])
-
-
-    # If no results, end program
-    if len(df) == 0:
-        print('No results')
-        sys.exit()
     return df
 
 
@@ -318,13 +344,10 @@ def patent_processor(df):
     df.dropna(axis=0, how='all', inplace=True)
     # Apply the function to each row and create a new column 'inventor_countries'
     df['inventor_countries'] = df.apply(lambda row: list(set(extract_countries(row))), axis=1)
-    df['inventor_countries'] = df['inventor_countries'].apply(lambda x: [country_name(country) for country in x])
-    df['coords'] = df.apply(lambda row: extract_coords(row), axis=1)
+    df['inventor_countries'] = df['inventor_countries'].apply(lambda x: [de_abbrev(country) for country in x])
 
     # Preserve list structure
     df['inventor_countries'] = df['inventor_countries'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
-    df['coords'] = df['coords'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
-    df['IPC Codes'] = df['IPC Codes'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
 
     for name in df.columns.tolist():
         if 'Inventor' in name:
@@ -333,26 +356,37 @@ def patent_processor(df):
 
     # Assignee processing
     df['assignees'] = df['assignees'].apply(lambda x: [d['assignee_organization'] for d in x] if isinstance(x, list) else x)
-    df['assignees'] = df['assignees'].apply(lambda x: json.dumps(x) if isinstance(x, list) else x)
 
     # Foreign Patent Processing
 
     df['foreign_priority'] = (df['foreign_priority'].apply
         (lambda x: sum(1 for d in x if d['forprior_docnumber'] is not None) if isinstance(x, list) else x))
+
+    # Application type processing
+    df['applications'] = df['applications'].apply(lambda x: int([d['app_type'] for d in x][0]) if isinstance(x, list) else x)
+
     return df
 
 
-def country_searcher(row, countries):
-    for key in countries:
-        if key in row['inventor_countries']:
-            return True
+def country_searcher(row, country):
+    if country in row['inventor_countries']:
+        return True
     return False
 
 
-def country_parser(df_to_search, countries):
-    mask = df_to_search.apply(country_searcher, axis=1)
+def country_parser(df_to_search, country):
+    mask = df_to_search.apply(lambda row: country_searcher(row, country), axis=1)
     df = df_to_search[mask]
     return df
+
+
+def str_to_int(df_input):
+    df_input['patent_processing_time'] = df_input['patent_processing_time'].apply(lambda x: int(x))
+    df_input['patent_num_claims'] = df_input['patent_num_claims'].apply(lambda x: int(x))
+    df_input['patent_num_combined_citations'] = df_input['patent_num_combined_citations'].apply(lambda x: int(x))
+    df_input['patent_num_cited_by_us_patents'] = df_input['patent_num_cited_by_us_patents'].apply(lambda x: int(x))
+    df_input['foreign_priority'] = df_input['foreign_priority'].apply(lambda x: int(x))
+    return df_input
 
 
 def metric_winsorize(df_input):
@@ -418,31 +452,44 @@ def duplicate_purger(df):
     return df
 
 
-def single_query(keyword):
+def single_query(country):
     # Retrieve a single query from the API
     # keyword = Term to search from API
-    df_raw = get_query(keyword)
+    # year = earliest year to retrieve data from (optional)
+    df_raw = get_query(country)
+    print('Raw data retrieved')
     df = patent_processor(df_raw)
-    df_processed = metric_calculator(metric_winsorize(df))
-    df_clean = duplicate_purger(df_processed)
-    keyword_safe = keyword.replace(' ', '_').replace('"', '')
-    df_clean.to_csv(f'patents_data_{keyword_safe}.csv', index=False)
-    return df_clean
+    print('Data processed')
+    df_processed = metric_calculator(metric_winsorize(str_to_int(df)))
+    print('Metrics calculated')
+    # df_clean = duplicate_purger(df_processed)
+    # print('Duplicates purged')
+    keyword_safe = country.replace(' ', '_').replace('"', '')
+    df_processed.apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
+    df_processed.to_csv(f'patents_data_{keyword_safe}.csv', index=False)
+    return df_processed
 
 
 def multiple_query(*args):
     # Retrieve multiple queries from the API
-    # args = Terms to search from API
-    df_list = list()
-    for keyword in list(args):
+    # args = countries to search from API
+    print(isinstance(args[0], list))
+    if isinstance(args[0], list):
+        countries = args[0]
+    else:
+        countries = list(args)
+    for keyword in countries:
+        print(keyword)
         df_raw = get_query(keyword)
+        print(len(df_raw))
+        if len(df_raw) == 0:
+            continue
         df = patent_processor(df_raw)
-        df_processed = metric_calculator(metric_winsorize(df))
-        df_list.append(df_processed)
-    df_comb = combiner(df_list)
-    df_clean = duplicate_purger(df_comb)
-    df_clean.to_csv('patents_data_multiple.csv', index=False)
-    return df_comb
+        df_processed = metric_calculator(metric_winsorize(str_to_int(df)))
+        df_processed = df_processed.apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
+        keyword_safe = keyword.replace(' ', '_').replace('"', '')
+        df_processed.to_csv(f'C:\\Users\\hkdeb\\PycharmProjects\\ie5bot\\data\\{keyword_safe}_patentsdata.csv', index=False)
+    return None
 
 # To combine multiple already processed csv files - enter the file names as strings in the list below
 # df_multiple = csv_combiner()
@@ -453,7 +500,19 @@ def multiple_query(*args):
 # patent_num_cited_by_us_patents	patent_processing_time	foreign_priority
 # value_dist(df_metrics, 'patent_value_sum')
 
+df = pd.read_excel('EURAFR countries.xlsx')
 
-# To search for patents from certain countries
-# df_countries = country_parser(df_metrics, ['United Kingdom', 'United States'])
+df = df.iloc[:, 0].apply(lambda x: official_name_converter(country_converter(x)))
+countries_list = df.tolist()
+countries_list[15] = 'Georgia'
+abbrev_list = []
+for country in countries_list:
+    abbrev = abbreviator(official_name_converter(country_converter(country)))
+    if abbrev is not None:
+        abbrev_list.append(abbrev)
+print(abbrev_list)
+# multiple_query(abbrev_list)
+single_query('AT')
 
+
+# TODO: Determine if country assignation should be based on assignee or inventor country

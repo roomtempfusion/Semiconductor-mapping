@@ -460,6 +460,7 @@ file_path = 'country_mapping.json'
 # Save the dictionary to a file
 with open(file_path, 'w') as file:
     json.dump(extensive_dict, file)
+
 official_dict = {
   'United States': 'United States of America',
   'China': 'People\'s Republic of China',
