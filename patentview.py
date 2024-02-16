@@ -361,10 +361,6 @@ def patent_processor(df):
 
     df['foreign_priority'] = (df['foreign_priority'].apply
         (lambda x: sum(1 for d in x if d['forprior_docnumber'] is not None) if isinstance(x, list) else x))
-
-    # Application type processing
-    df['applications'] = df['applications'].apply(lambda x: int([d['app_type'] for d in x][0]) if isinstance(x, list) else x)
-
     return df
 
 
@@ -473,13 +469,13 @@ def single_query(country):
 def multiple_query(*args):
     # Retrieve multiple queries from the API
     # args = countries to search from API
-    print(isinstance(args[0], list))
     if isinstance(args[0], list):
         countries = args[0]
     else:
         countries = list(args)
     for keyword in countries:
-        print(keyword)
+        converted = de_abbrev(keyword)
+        print(converted)
         df_raw = get_query(keyword)
         print(len(df_raw))
         if len(df_raw) == 0:
@@ -487,7 +483,7 @@ def multiple_query(*args):
         df = patent_processor(df_raw)
         df_processed = metric_calculator(metric_winsorize(str_to_int(df)))
         df_processed = df_processed.apply(lambda x: json.dumps(x) if isinstance(x, (list, set)) else x)
-        keyword_safe = keyword.replace(' ', '_').replace('"', '')
+        keyword_safe = converted.replace(' ', '_').replace('"', '').lower()
         df_processed.to_csv(f'C:\\Users\\hkdeb\\PycharmProjects\\ie5bot\\data\\{keyword_safe}_patentsdata.csv', index=False)
     return None
 
@@ -500,19 +496,66 @@ def multiple_query(*args):
 # patent_num_cited_by_us_patents	patent_processing_time	foreign_priority
 # value_dist(df_metrics, 'patent_value_sum')
 
-df = pd.read_excel('EURAFR countries.xlsx')
+countries_SCA= [
+    "AF",  # Afghanistan
+    "BD",  # Bangladesh
+    "BT",  # Bhutan
+    "IN",  # India
+    "KZ",  # Kazakhstan
+    "KG",  # Kyrgyzstan
+    "MV",  # Maldives
+    "NP",  # Nepal
+    "PK",  # Pakistan
+    "LK",  # Sri Lanka
+    "TJ",  # Tajikistan
+    "TM",  # Turkmenistan
+    "UZ"   # Uzbekistan
+]
+countries_NEA = [
+    "QA",  # Qatar
+    "SA",  # Saudi Arabia
+    "SY",  # Syria
+    "TN",  # Tunisia
+    "AE",  # United Arab Emirates
+    "YE"   # Yemen
+]
+countries_WHA = [
+    "AG",  # Antigua and Barbuda
+    "AR",  # Argentina
+    "BS",  # The Bahamas
+    "BB",  # Barbados
+    "BZ",  # Belize
+    "BO",  # Bolivia
+    "BR",  # Brazil
+    "CA",  # Canada
+    "CL",  # Chile
+    "CO",  # Colombia
+    "CR",  # Costa Rica
+    "CU",  # Cuba
+    "DM",  # Dominica
+    "DO",  # Dominican Republic
+    "EC",  # Ecuador
+    "SV",  # El Salvador
+    "GD",  # Grenada
+    "GT",  # Guatemala
+    "GY",  # Guyana
+    "HT",  # Haiti
+    "HN",  # Honduras
+    "JM",  # Jamaica
+    "MX",  # Mexico
+    "NI",  # Nicaragua
+    "PA",  # Panama
+    "PY",  # Paraguay
+    "PE",  # Peru
+    "KN",  # Saint Kitts and Nevis
+    "LC",  # Saint Lucia
+    "VC",  # Saint Vincent and the Grenadines
+    "SR",  # Suriname
+    "TT",  # Trinidad and Tobago
+    "UY",  # Uruguay
+    "VE"   # Venezuela
+]
 
-df = df.iloc[:, 0].apply(lambda x: official_name_converter(country_converter(x)))
-countries_list = df.tolist()
-countries_list[15] = 'Georgia'
-abbrev_list = []
-for country in countries_list:
-    abbrev = abbreviator(official_name_converter(country_converter(country)))
-    if abbrev is not None:
-        abbrev_list.append(abbrev)
-print(abbrev_list)
-# multiple_query(abbrev_list)
-single_query('AT')
+multiple_query(countries_WHA)
 
 
-# TODO: Determine if country assignation should be based on assignee or inventor country
