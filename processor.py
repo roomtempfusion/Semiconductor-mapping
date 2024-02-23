@@ -17,7 +17,6 @@ with open('official_names.json', 'r') as file:
 
 def replace_country_name(input_str):
 
-    # Convert input string to uppercase for case-insensitive matching
     input_str_upper = input_str.upper()
 
     for abbreviation, full_name in country_dict.items():
@@ -27,7 +26,6 @@ def replace_country_name(input_str):
 
 def official_name(input_str):
 
-    # Convert input string to uppercase for case-insensitive matching
     input_str_upper = input_str.upper()
 
     for abbreviation, full_name in official_dict.items():
@@ -62,12 +60,10 @@ df['Author Keywords'] = df['Author Keywords'].apply(lambda x: [] if x == 'z' els
 df = df[df['Author Countries'].apply(lambda x: x != ['NA'] if isinstance(x, list) else True)]
 df = df[df['Author Countries'].apply(lambda x: x != [''] if isinstance(x, list) else True)]
 
-value_to_remove = 'NA'  # Replace with the actual value you want to remove
+value_to_remove = 'NA'
 
-# Use apply and lambda to remove the specified value from each list
 df['Author Countries'] = df['Author Countries'].apply(lambda x: [item for item in x if item != value_to_remove])
 
-# If you want to remove lists that become empty after removing the value, you can use:
 df['Author Countries'] = df['Author Countries'].apply(lambda x: x if x else None)
 df['Countries'] = df['Author Countries'].apply(lambda x: list(set(x)) if x else None)
 

@@ -3,11 +3,9 @@ import json
 
 file_path = 'official_names.json'
 with open(file_path, 'r', encoding='cp1252') as file:
-    # Load the JSON data into a dictionary
     official_names = json.load(file)
 file_path2 = 'country_mapping.json'
 with open(file_path2, 'r', encoding='cp1252') as file:
-    # Load the JSON data into a dictionary
     country_mapping = json.load(file)
 
 # df = pd.read_excel('EURAFR countries.xlsx')
